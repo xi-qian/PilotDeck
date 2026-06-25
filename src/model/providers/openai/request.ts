@@ -19,6 +19,7 @@ export type OpenAIRequestBody = {
   temperature?: number;
   stream?: boolean;
   metadata?: Record<string, unknown>;
+  chat_template_kwargs?: Record<string, unknown>;
   /**
    * Provider-native structured output. Set when `request.outputSchema` is
    * provided. `strict` defaults to true unless the schema opts out.
@@ -94,6 +95,13 @@ export function buildOpenAIRequest(
     if (request.thinking.budgetTokens) {
       (body as Record<string, unknown>).thinking_budget = request.thinking.budgetTokens;
     }
+  }
+
+  if (request.thinking?.enabled === false) {
+    body.chat_template_kwargs = {
+      ...(body.chat_template_kwargs ?? {}),
+      enable_thinking: false,
+    };
   }
 
   return body;

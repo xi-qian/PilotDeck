@@ -16,6 +16,12 @@ export function parseOpenAIResponse(raw: unknown, provider = "openai"): Canonica
   const message = asRecord(firstChoice.message);
   const content: CanonicalContentBlock[] = [];
 
+  const reasoningContent =
+    typeof message.reasoning_content === "string" ? message.reasoning_content : "";
+  if (reasoningContent.length > 0) {
+    content.push({ type: "thinking", text: reasoningContent });
+  }
+
   if (typeof message.content === "string" && message.content.length > 0) {
     content.push({ type: "text", text: message.content });
   } else if (Array.isArray(message.content)) {
