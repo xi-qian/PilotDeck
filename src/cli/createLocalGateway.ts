@@ -776,12 +776,24 @@ class ProjectRuntimeRegistry {
   private async prepareSessionRuntime(context: GatewaySessionContext) {
     const runtime = this.resolve(context.projectKey);
     await runtime.pluginRuntime.refresh();
-    await this.ensureMcpReady(runtime);
+    const mcpEnabled = context.mcpMode !== "disabled";
+    if (mcpEnabled) {
+      await this.ensureMcpReady(runtime);
+    }
     const contributions = runtime.pluginRuntime.snapshotContributions();
 
     // -- per-session MCP runtime (e.g. browser-use) --------------------
     let sessionTools: ToolRegistry = runtime.tools;
-    const perSpecs = runtime.perSessionServerSpecs;
+    if (!mcpEnabled) {
+      const mcpToolNames = sessionTools.list().filter((tool) => tool.kind === "mcp").map((tool) => tool.name);
+      if (mcpToolNames.length > 0) {
+        sessionTools = sessionTools.clone();
+        for (const name of mcpToolNames) {
+          sessionTools.unregister(name);
+        }
+      }
+    }
+    const perSpecs = mcpEnabled ? runtime.perSessionServerSpecs : undefined;
     const maxInstances = runtime.snapshot.config.gateway?.maxPerSessionMcpInstances ?? 5;
     if (perSpecs && perSpecs.length > 0 && this.sessionMcpRuntimes.size < maxInstances) {
       this.evictSessionMcp(context.sessionKey);
@@ -895,7 +907,14 @@ class ProjectRuntimeRegistry {
       );
     }
     const lifecycle = new LifecycleRuntime(hookRuntime);
-    const extension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime);
+    const pluginExtension = new PluginRuntimeExtensionResolver(runtime.pluginRuntime);
+    const extension = mcpEnabled
+      ? pluginExtension
+      : {
+          listCommands: () => pluginExtension.listCommands(),
+          listSkills: () => pluginExtension.listSkills(),
+          listMcpInstructions: () => [],
+        };
     const projectRoot = runtime.projectRoot;
     const memoryResolver = runtime.memory;
     const now = this.options.now;

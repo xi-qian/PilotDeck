@@ -83,6 +83,10 @@ export type GatewaySubmitTurnInput = {
   allowPlanModeTools?: boolean;
   runId?: string;
   maxTurns?: number;
+  /** Disable all MCP tools and MCP prompt instructions for this session. */
+  mcpMode?: "auto" | "disabled";
+  /** Evict the in-memory session and its resources after this turn settles. */
+  sessionLifecycle?: "persistent" | "ephemeral";
   /** Hard wall-clock limit for this turn. The gateway aborts and closes the session when exceeded. */
   timeoutMs?: number;
   telemetry?: {

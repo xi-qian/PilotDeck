@@ -329,6 +329,7 @@ export class InProcessGateway implements Gateway {
           sessionKey: input.sessionKey,
           projectKey: input.projectKey,
           channelKey: input.channelKey,
+          mcpMode: input.mcpMode ?? "auto",
         });
         if (input.timeoutMs !== undefined && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0) {
           timeoutHandle = setTimeout(() => {
@@ -457,11 +458,19 @@ export class InProcessGateway implements Gateway {
       this.elicitationBus.rejectSession(input.sessionKey, "turn_ended");
       this.permissionBus.rejectSession(input.sessionKey, "turn_ended");
       this.router.endTurn(input.sessionKey, runId);
-      if (timedOut) {
-        // The timed-out AgentSession is never safe to reuse. Do not await a
-        // misbehaving tool here: the hard timeout must release the Cron run.
+      if (timedOut || input.sessionLifecycle === "ephemeral") {
+        // Timed-out and explicitly ephemeral sessions are never reused. Closing
+        // the router record triggers host cleanup for per-session resources such
+        // as browser MCP subprocesses and temporary profiles.
         await this.router.close(input.sessionKey);
-        void pump.catch(() => undefined);
+        this.sessionPermissionGrants.delete(input.sessionKey);
+        if (timedOut) {
+          // Do not await a misbehaving tool here: the hard timeout must release
+          // the caller even if the background pump has not settled yet.
+          void pump.catch(() => undefined);
+        } else {
+          await pump.catch(() => undefined);
+        }
       } else {
         // Defensive — make sure the pump promise is settled before we resolve.
         await pump.catch(() => undefined);

@@ -5,6 +5,7 @@ export type GatewaySessionContext = {
   sessionKey: string;
   projectKey?: string;
   channelKey: string;
+  mcpMode?: "auto" | "disabled";
 };
 
 export type GatewaySessionFactory = (context: GatewaySessionContext) => AgentSession | Promise<AgentSession>;
@@ -51,10 +52,14 @@ export class SessionRouter {
     this.sweepIdle();
     const cached = this.sessions.get(context.sessionKey);
     if (cached) {
-      cached.context = mergeSessionContext(cached.context, context);
-      if (cached.dirtyReason && this.options.recreateSession) {
+      const nextContext = mergeSessionContext(cached.context, context);
+      const mcpModeChanged = resolveMcpMode(cached.context) !== resolveMcpMode(nextContext);
+      cached.context = nextContext;
+      if (cached.dirtyReason || mcpModeChanged) {
         this.options.onSessionEvict?.(context.sessionKey);
-        cached.session = await this.options.recreateSession(cached.context, cached.session);
+        cached.session = this.options.recreateSession
+          ? await this.options.recreateSession(cached.context, cached.session)
+          : await this.options.createSession(cached.context);
         cached.dirtyReason = undefined;
       }
       cached.lastUsedAt = this.nowMs();
@@ -192,5 +197,10 @@ function mergeSessionContext(
     sessionKey: next.sessionKey,
     channelKey: next.channelKey || current.channelKey,
     projectKey: current.projectKey ?? next.projectKey,
+    mcpMode: next.mcpMode ?? current.mcpMode,
   };
+}
+
+function resolveMcpMode(context: GatewaySessionContext): "auto" | "disabled" {
+  return context.mcpMode ?? "auto";
 }

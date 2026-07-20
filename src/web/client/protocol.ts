@@ -135,6 +135,8 @@ export type WebSubmitTurnInput = {
   /** Allow model-visible plan mode tools. Defaults to true only for explicit plan-mode turns. */
   allowPlanModeTools?: boolean;
   runId?: string;
+  mcpMode?: "auto" | "disabled";
+  sessionLifecycle?: "persistent" | "ephemeral";
 };
 
 export type WebChannelAttachment = {
