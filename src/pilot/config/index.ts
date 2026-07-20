@@ -29,5 +29,6 @@ export {
   type PilotRouterConfig,
   type PilotProxyConfig,
   type PilotToolsConfig,
+  type PilotWebFetchConfig,
   type PilotWebSearchConfig,
 } from "./types.js";

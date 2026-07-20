@@ -225,11 +225,13 @@ export function createWebFetchTool(
         ],
         maxOutputTokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
         temperature: options.temperature ?? 0,
+        thinking: { enabled: false },
         stream: true,
         metadata: { tool: "web_fetch", url },
       };
 
       let modelText = "";
+      let thinkingChars = 0;
       let _usage: CanonicalUsage | undefined;
       try {
         for await (const event of model.stream(request, signal)) {
@@ -242,6 +244,9 @@ export function createWebFetchTool(
           switch (event.type) {
             case "text_delta":
               modelText += event.text;
+              break;
+            case "thinking_delta":
+              thinkingChars += event.text.length;
               break;
             case "usage":
               _usage = event.usage;
@@ -265,7 +270,20 @@ export function createWebFetchTool(
         );
       }
 
-      const finalText = modelText.length > 0 ? modelText : "[No response from secondary model]";
+      if (modelText.trim().length === 0) {
+        throw new PilotDeckToolRuntimeError(
+          "tool_execution_failed",
+          "web_fetch secondary model returned no visible text.",
+          {
+            stage: "secondary_model",
+            provider: request.provider,
+            model: request.model,
+            thinkingChars,
+          },
+        );
+      }
+
+      const finalText = modelText;
       return {
         content: [{ type: "text", text: finalText }],
         data: {

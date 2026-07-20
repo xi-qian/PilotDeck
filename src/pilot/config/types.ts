@@ -149,8 +149,15 @@ export type PilotWebSearchConfig = {
   customProvider?: PilotWebSearchCustomProviderConfig;
 };
 
+export type PilotWebFetchConfig = {
+  model: PilotAgentModelSelection;
+  maxOutputTokens?: number;
+  temperature?: number;
+};
+
 export type PilotToolsConfig = {
   webSearch?: PilotWebSearchConfig;
+  webFetch?: PilotWebFetchConfig;
 };
 
 export type PilotProxyConfig = {

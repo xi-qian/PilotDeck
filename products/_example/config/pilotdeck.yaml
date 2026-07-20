@@ -18,8 +18,13 @@ memory:
 # 内置工具配置（可选）
 # tools:
 #   webSearch:
-#     apiKey: "..."                                 # SerpAPI key（serpapi.com）
-#     # endpoint: https://serpapi.com/search        # 高级：覆盖到 SerpAPI 兼容代理
+#     provider: glm                                  # glm | tavily | custom
+#     apiKey: "..."
+#     # endpoint: https://api.z.ai/api/paas/v4/web_search
+#   webFetch:
+#     model: "openai/gpt-4.1-mini"                  # 必须引用 model.providers 中的模型
+#     maxOutputTokens: 4096
+#     temperature: 0
 
 # 品牌配置（待贡献点就绪后生效）
 # brand:

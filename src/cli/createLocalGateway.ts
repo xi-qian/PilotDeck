@@ -568,6 +568,7 @@ class ProjectRuntimeRegistry {
     });
     const backgroundTasks = new BackgroundTaskRuntime({ now: this.options.now });
     const webSearchConfig = snapshot.config.tools?.webSearch;
+    const webFetchConfig = snapshot.config.tools?.webFetch;
     const tools = createBuiltinRegistry({
       backgroundTasks: { runtime: backgroundTasks },
       readSkill: {
@@ -584,6 +585,26 @@ class ProjectRuntimeRegistry {
               ...(webSearchConfig.apiKey ? { apiKey: webSearchConfig.apiKey } : {}),
               ...(webSearchConfig.endpoint ? { endpoint: webSearchConfig.endpoint } : {}),
               ...(webSearchConfig.customProvider ? { customProvider: webSearchConfig.customProvider } : {}),
+            },
+          }
+        : {}),
+      // A configured secondary model is called directly through ModelRuntime.
+      // This prevents Router scenario classification from selecting a
+      // thinking-only model for web page extraction.
+      ...(webFetchConfig
+        ? {
+            webFetch: {
+              model: {
+                stream: (request, signal) => model.stream(request, { signal }),
+              },
+              provider: webFetchConfig.model.provider,
+              modelId: webFetchConfig.model.model,
+              ...(webFetchConfig.maxOutputTokens !== undefined
+                ? { maxOutputTokens: webFetchConfig.maxOutputTokens }
+                : {}),
+              ...(webFetchConfig.temperature !== undefined
+                ? { temperature: webFetchConfig.temperature }
+                : {}),
             },
           }
         : {}),

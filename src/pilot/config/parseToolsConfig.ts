@@ -1,7 +1,10 @@
 import { isRecord } from "../../model/config/schema.js";
+import type { ModelConfig } from "../../model/protocol/canonical.js";
 import type {
+  PilotAgentModelSelection,
   PilotConfigDiagnostic,
   PilotToolsConfig,
+  PilotWebFetchConfig,
   PilotWebSearchConfig,
   PilotWebSearchCustomAuth,
   PilotWebSearchCustomMethod,
@@ -16,6 +19,9 @@ import type {
  *       provider: glm                    # glm | tavily | custom
  *       apiKey: "..."
  *       endpoint: https://api.z.ai/api/paas/v4/web_search
+ *     webFetch:
+ *       model: openai/gpt-4.1-mini
+ *       maxOutputTokens: 4096
  *
  * Unknown fields produce non-fatal warnings so future additions don't break
  * older deployments.  Returns `undefined` when the section is missing or
@@ -24,6 +30,7 @@ import type {
 export function parseToolsConfig(
   rawTools: unknown,
   diagnostics: PilotConfigDiagnostic[],
+  modelConfig: ModelConfig,
 ): PilotToolsConfig | undefined {
   if (rawTools === undefined) {
     return undefined;
@@ -40,9 +47,10 @@ export function parseToolsConfig(
   }
 
   const webSearch = parseWebSearch(rawTools.webSearch, diagnostics);
+  const webFetch = parseWebFetch(rawTools.webFetch, diagnostics, modelConfig);
 
   for (const key of Object.keys(rawTools)) {
-    if (key !== "webSearch") {
+    if (key !== "webSearch" && key !== "webFetch") {
       diagnostics.push({
         code: "TOOLS_UNKNOWN_FIELD",
         severity: "warning",
@@ -53,10 +61,151 @@ export function parseToolsConfig(
     }
   }
 
-  if (!webSearch) {
+  if (!webSearch && !webFetch) {
     return undefined;
   }
-  return { webSearch };
+  return {
+    ...(webSearch ? { webSearch } : {}),
+    ...(webFetch ? { webFetch } : {}),
+  };
+}
+
+function parseWebFetch(
+  raw: unknown,
+  diagnostics: PilotConfigDiagnostic[],
+  modelConfig: ModelConfig,
+): PilotWebFetchConfig | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!isRecord(raw)) {
+    diagnostics.push({
+      code: "TOOLS_WEB_FETCH_INVALID",
+      severity: "fatal",
+      message: "tools.webFetch must be an object.",
+      path: "tools.webFetch",
+      recoverable: false,
+    });
+    return undefined;
+  }
+
+  const model = parseWebFetchModel(raw.model, diagnostics, modelConfig);
+  let maxOutputTokens: number | undefined;
+  if (raw.maxOutputTokens !== undefined) {
+    if (
+      typeof raw.maxOutputTokens !== "number" ||
+      !Number.isInteger(raw.maxOutputTokens) ||
+      raw.maxOutputTokens <= 0
+    ) {
+      diagnostics.push({
+        code: "TOOLS_WEB_FETCH_MAX_OUTPUT_TOKENS_INVALID",
+        severity: "fatal",
+        message: "tools.webFetch.maxOutputTokens must be a positive integer.",
+        path: "tools.webFetch.maxOutputTokens",
+        recoverable: false,
+      });
+    } else {
+      maxOutputTokens = raw.maxOutputTokens;
+    }
+  }
+
+  let temperature: number | undefined;
+  if (raw.temperature !== undefined) {
+    if (
+      typeof raw.temperature !== "number" ||
+      !Number.isFinite(raw.temperature) ||
+      raw.temperature < 0 ||
+      raw.temperature > 2
+    ) {
+      diagnostics.push({
+        code: "TOOLS_WEB_FETCH_TEMPERATURE_INVALID",
+        severity: "fatal",
+        message: "tools.webFetch.temperature must be a finite number between 0 and 2.",
+        path: "tools.webFetch.temperature",
+        recoverable: false,
+      });
+    } else {
+      temperature = raw.temperature;
+    }
+  }
+
+  for (const key of Object.keys(raw)) {
+    if (key !== "model" && key !== "maxOutputTokens" && key !== "temperature") {
+      diagnostics.push({
+        code: "TOOLS_WEB_FETCH_UNKNOWN_FIELD",
+        severity: "warning",
+        message: `Unknown tools.webFetch field ${key}.`,
+        path: `tools.webFetch.${key}`,
+        recoverable: true,
+      });
+    }
+  }
+
+  if (!model) {
+    return undefined;
+  }
+  return {
+    model,
+    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+    ...(temperature !== undefined ? { temperature } : {}),
+  };
+}
+
+function parseWebFetchModel(
+  raw: unknown,
+  diagnostics: PilotConfigDiagnostic[],
+  modelConfig: ModelConfig,
+): PilotAgentModelSelection | undefined {
+  const path = "tools.webFetch.model";
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    diagnostics.push({
+      code: "TOOLS_WEB_FETCH_MODEL_INVALID",
+      severity: "fatal",
+      message: `${path} must be a non-empty provider/model string.`,
+      path,
+      recoverable: false,
+    });
+    return undefined;
+  }
+
+  const value = raw.trim();
+  const separatorIndex = value.indexOf("/");
+  const providerId = separatorIndex >= 0 ? value.slice(0, separatorIndex) : "";
+  const modelId = separatorIndex >= 0 ? value.slice(separatorIndex + 1) : "";
+  if (!providerId || !modelId) {
+    diagnostics.push({
+      code: "TOOLS_WEB_FETCH_MODEL_INVALID",
+      severity: "fatal",
+      message: `${path} must use provider/model format.`,
+      path,
+      recoverable: false,
+    });
+    return undefined;
+  }
+
+  const provider = modelConfig.providers[providerId];
+  if (!provider) {
+    diagnostics.push({
+      code: "TOOLS_WEB_FETCH_PROVIDER_NOT_FOUND",
+      severity: "fatal",
+      message: `${path} references unknown provider ${providerId}.`,
+      path,
+      recoverable: false,
+    });
+    return undefined;
+  }
+  if (!provider.models[modelId]) {
+    diagnostics.push({
+      code: "TOOLS_WEB_FETCH_MODEL_NOT_FOUND",
+      severity: "fatal",
+      message: `${path} references unknown model ${modelId} for provider ${providerId}.`,
+      path,
+      recoverable: false,
+    });
+    return undefined;
+  }
+
+  return { id: value, provider: providerId, model: modelId };
 }
 
 function parseWebSearch(
