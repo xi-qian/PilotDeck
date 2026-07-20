@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../components/auth/context/AuthContext';
 import { IS_PLATFORM } from '../constants/config';
+import { appWebSocketUrl } from '../utils/api';
 
 type WSSubscriber = (msg: any) => void;
 
@@ -37,9 +38,8 @@ export const useWebSocket = () => {
 };
 
 const buildWebSocketUrl = (token: string | null) => {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  if (IS_PLATFORM || !token) return `${protocol}//${window.location.host}/ws`;
-  return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+  if (IS_PLATFORM || !token) return appWebSocketUrl('/ws');
+  return appWebSocketUrl(`/ws?token=${encodeURIComponent(token)}`);
 };
 
 const INITIAL_RECONNECT_MS = 1000;

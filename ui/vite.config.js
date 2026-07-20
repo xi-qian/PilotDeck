@@ -8,6 +8,46 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const repoRoot = path.resolve(__dirname, '..')
 
+function dynamicViteClientHost() {
+  return {
+    name: 'pinea:dynamic-vite-client-host',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url || ''
+        if (!url.startsWith('/@vite/client')) return next()
+
+        try {
+          const hostHeader = req.headers?.host
+          const result = await server.transformRequest('/@vite/client')
+          let code = result?.code || ''
+
+          if (hostHeader) {
+            const hostWithSlash = hostHeader.endsWith('/') ? hostHeader : `${hostHeader}/`
+            // Make serverHost/directSocketHost match the current request host, so HMR works
+            // when accessed via localhost / wired IP / WiFi IP.
+            code = code.replace(
+              /const serverHost = ".*?";/,
+              `const serverHost = ${JSON.stringify(hostWithSlash)};`,
+            )
+            code = code.replace(
+              /const directSocketHost = ".*?";/,
+              `const directSocketHost = ${JSON.stringify(hostWithSlash)};`,
+            )
+          }
+
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
+          res.setHeader('Cache-Control', 'no-store')
+          res.end(code)
+        } catch (e) {
+          next(e)
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // Load the single root .env and let exported shell vars override file values.
   const env = {
@@ -31,12 +71,14 @@ export default defineConfig(({ mode }) => {
   const disableLocalAuth =
     env.PILOTDECK_DISABLE_LOCAL_AUTH !== '0' &&
     env.PILOTDECK_DISABLE_LOCAL_AUTH !== 'false'
+  const uiBasePath = `/${String(env.VITE_UI_BASE_PATH || '').replace(/^\/+|\/+$/g, '')}/`
 
   return {
+    base: uiBasePath === '//' ? '/' : uiBasePath,
     define: {
       'import.meta.env.VITE_DISABLE_LOCAL_AUTH': JSON.stringify(disableLocalAuth ? 'true' : 'false'),
     },
-    plugins: [react()],
+    plugins: [dynamicViteClientHost(), react()],
     resolve: {
       alias: {
         react: localNodeModules('react'),

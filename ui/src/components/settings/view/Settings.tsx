@@ -27,6 +27,7 @@ import { useUiPreferences } from '../../../hooks/useUiPreferences';
 import { usePilotDeckConfig } from '../../../hooks/usePilotDeckConfig';
 import { useSettingsController } from '../hooks/useSettingsController';
 import { useGitVersion } from '../../../hooks/useGitVersion';
+import { appApiUrl } from '../../../utils/api';
 import type {
   CodeEditorSettingsState,
   ProjectSortOrder,
@@ -581,7 +582,7 @@ function VersionUpdateSection() {
     triggerRestart().catch(() => {});
     const poll = setInterval(async () => {
       try {
-        const res = await fetch('/health');
+        const res = await fetch(appApiUrl('/health'));
         if (res.ok) { clearInterval(poll); window.location.reload(); }
       } catch { /* still down */ }
     }, 2000);

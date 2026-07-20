@@ -1,15 +1,15 @@
 import { IS_PLATFORM } from '../../../constants/config';
+import { appWebSocketUrl } from '../../../utils/api';
 import type { ShellIncomingMessage, ShellOutgoingMessage } from '../types/types';
 
 export function getShellWebSocketUrl(): string | null {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const token = localStorage.getItem('auth-token');
 
   if (IS_PLATFORM || !token) {
-    return `${protocol}//${window.location.host}/shell`;
+    return appWebSocketUrl('/shell');
   }
 
-  return `${protocol}//${window.location.host}/shell?token=${encodeURIComponent(token)}`;
+  return appWebSocketUrl(`/shell?token=${encodeURIComponent(token)}`);
 }
 
 export function parseShellMessage(payload: string): ShellIncomingMessage | null {

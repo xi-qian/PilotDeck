@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { GitCommit, RefreshCw, X, Check, AlertCircle } from 'lucide-react';
 import { useGitVersion } from '../../hooks/useGitVersion';
 import { cn } from '../../lib/utils.js';
+import { appApiUrl } from '../../utils/api.js';
 
 type UpdatePhase = 'idle' | 'updating' | 'success' | 'error';
 
@@ -60,7 +61,7 @@ export function VersionBadge() {
     // Poll until server is back, then reload
     const poll = setInterval(async () => {
       try {
-        const res = await fetch('/health');
+        const res = await fetch(appApiUrl('/health'));
         if (res.ok) { clearInterval(poll); window.location.reload(); }
       } catch { /* still down */ }
     }, 2000);

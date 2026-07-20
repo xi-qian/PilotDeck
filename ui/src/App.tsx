@@ -11,6 +11,8 @@ import AppShellV2 from './components/app-shell/AppShellV2';
 import i18n from './i18n/config.js';
 
 export default function App() {
+  const routerBasename =
+    window.__ROUTER_BASENAME__ || String(import.meta.env.VITE_UI_BASE_PATH || '').replace(/\/$/, '');
   // Single wildcard so URL changes don't remount the shell. Params are
   // resolved inside AppShellV2 via useMatch so navigation between
   // /, /p/:name, /p/:name/c/:id, and /session/:id preserves all state.
@@ -24,7 +26,7 @@ export default function App() {
                 <TasksSettingsProvider>
                   <TaskMasterProvider>
                     <ProtectedRoute>
-                      <Router basename={window.__ROUTER_BASENAME__ || ''}>
+                      <Router basename={routerBasename}>
                         <Routes>
                           <Route path="*" element={<AppShellV2 />} />
                         </Routes>

@@ -1,5 +1,19 @@
 import { IS_PLATFORM } from "../constants/config";
 
+const apiBasePath = String(import.meta.env.VITE_API_BASE_PATH || '').replace(/\/$/, '');
+
+export const appApiUrl = (path) => {
+  if (/^https?:\/\//i.test(path)) return path;
+  const suffix = String(path || '').startsWith('/') ? path : `/${path}`;
+  return `${apiBasePath}${suffix}`;
+};
+
+export const appWebSocketUrl = (path) => {
+  const url = new URL(appApiUrl(path), window.location.origin);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+};
+
 const normalizePathForUrl = (value) => String(value || '').replace(/\\/g, '/');
 
 const getProjectRelativePath = (filePath, projectRoot) => {
@@ -46,7 +60,7 @@ export const authenticatedFetch = (url, options = {}) => {
     defaultHeaders['Authorization'] = `Bearer ${token}`;
   }
 
-  return fetch(url, {
+  return fetch(appApiUrl(url), {
     ...options,
     headers: {
       ...defaultHeaders,
@@ -70,13 +84,13 @@ export const authenticatedFetch = (url, options = {}) => {
 export const api = {
   // Auth endpoints (no token required)
   auth: {
-    status: () => fetch('/api/auth/status'),
-    login: (username, password) => fetch('/api/auth/login', {
+    status: () => fetch(appApiUrl('/api/auth/status')),
+    login: (username, password) => fetch(appApiUrl('/api/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     }),
-    register: (username, password) => fetch('/api/auth/register', {
+    register: (username, password) => fetch(appApiUrl('/api/auth/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
