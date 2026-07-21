@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Socket } from "node:net";
 
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+const MAX_OUTBOUND_BUFFER_BYTES = 1024 * 1024;
 
 export function createWebSocketAcceptValue(key: string): string {
   return createHash("sha1").update(`${key}${WS_GUID}`).digest("base64");
@@ -10,6 +11,7 @@ export function createWebSocketAcceptValue(key: string): string {
 export class TextWebSocketConnection {
   private buffer = Buffer.alloc(0);
   private closed = false;
+  private closeNotified = false;
   private readonly messageHandlers: Array<(message: string) => void> = [];
   private readonly closeHandlers: Array<() => void> = [];
 
@@ -27,13 +29,18 @@ export class TextWebSocketConnection {
     this.closeHandlers.push(handler);
   }
 
-  sendText(message: string): void {
+  sendText(message: string): boolean {
     if (this.closed) {
-      return;
+      return false;
     }
     const payload = Buffer.from(message, "utf8");
     const header = createServerFrameHeader(payload.length, 0x1);
-    this.socket.write(Buffer.concat([header, payload]));
+    const frame = Buffer.concat([header, payload]);
+    if (this.socket.writableLength + frame.length > MAX_OUTBOUND_BUFFER_BYTES) {
+      this.close(1013, "slow_consumer");
+      return false;
+    }
+    return this.socket.write(frame);
   }
 
   close(code = 1000, reason = ""): void {
@@ -46,6 +53,7 @@ export class TextWebSocketConnection {
     payload.write(reason, 2);
     this.socket.write(Buffer.concat([createServerFrameHeader(payload.length, 0x8), payload]));
     this.socket.end();
+    this.emitClose();
   }
 
   private handleData(chunk: Buffer): void {
@@ -74,13 +82,17 @@ export class TextWebSocketConnection {
   }
 
   private emitClose(): void {
-    if (this.closed) {
+    if (this.closeNotified) {
       return;
     }
+    this.closeNotified = true;
     this.closed = true;
     for (const handler of this.closeHandlers) {
       handler();
     }
+    this.closeHandlers.length = 0;
+    this.messageHandlers.length = 0;
+    this.buffer = Buffer.alloc(0);
   }
 }
 

@@ -799,6 +799,9 @@ type AttemptOutcome = {
   shouldRetryZeroUsage: boolean;
 };
 
+const MAX_BUFFERED_STREAM_EVENTS = 128;
+const MAX_BUFFERED_STREAM_CHARS = 256_000;
+
 /**
  * "Content" events are the ones that are visible to the end-user / agent
  * loop in a way that can't be retracted: text, thinking, and tool-call
@@ -836,6 +839,7 @@ async function* streamAttempt(
   | { kind: "outcome"; outcome: AttemptOutcome }
 > {
   const buffered: CanonicalModelEvent[] = [];
+  let bufferedChars = 0;
   const state = createZeroUsageState();
   let providerError: import("../model/index.js").CanonicalModelError | undefined;
 
@@ -845,7 +849,7 @@ async function* streamAttempt(
         throwAbortError(abortSignal.reason);
       }
       observeEventForZeroUsage(state, event);
-      buffered.push(event);
+      bufferedChars = appendBufferedStreamEvent(buffered, event, bufferedChars);
       if (event.type === "error") {
         providerError = event.error;
       }
@@ -874,6 +878,86 @@ async function* streamAttempt(
       shouldRetryZeroUsage: shouldRetryZeroUsage(state),
     },
   };
+}
+
+/**
+ * Retry/token accounting only needs visible deltas. Keeping provider `raw`
+ * payloads retains entire SSE chunks (and sometimes response objects) for a
+ * whole turn, so project a bounded tail instead.
+ */
+function appendBufferedStreamEvent(
+  buffered: CanonicalModelEvent[],
+  event: CanonicalModelEvent,
+  currentChars: number,
+): number {
+  const projected = projectBufferedStreamEvent(event);
+  if (!projected) return currentChars;
+  const previous = buffered[buffered.length - 1];
+  if (
+    previous?.type === "text_delta" &&
+    projected.type === "text_delta"
+  ) {
+    previous.text += projected.text;
+    currentChars += projected.text.length;
+  } else if (
+    previous?.type === "thinking_delta" &&
+    projected.type === "thinking_delta"
+  ) {
+    previous.text += projected.text;
+    currentChars += projected.text.length;
+  } else if (
+    previous?.type === "tool_call_delta" &&
+    projected.type === "tool_call_delta" &&
+    previous.id === projected.id
+  ) {
+    previous.delta += projected.delta;
+    currentChars += projected.delta.length;
+  } else {
+    buffered.push(projected);
+    currentChars += bufferedEventChars(projected);
+  }
+
+  while (
+    buffered.length > MAX_BUFFERED_STREAM_EVENTS ||
+    (currentChars > MAX_BUFFERED_STREAM_CHARS && buffered.length > 1)
+  ) {
+    currentChars -= bufferedEventChars(buffered.shift()!);
+  }
+  if (currentChars > MAX_BUFFERED_STREAM_CHARS && buffered.length === 1) {
+    currentChars = truncateBufferedEvent(buffered[0], MAX_BUFFERED_STREAM_CHARS);
+  }
+  return currentChars;
+}
+
+function truncateBufferedEvent(event: CanonicalModelEvent, maxChars: number): number {
+  if (event.type === "text_delta" || event.type === "thinking_delta") {
+    event.text = event.text.slice(-maxChars);
+    return event.text.length;
+  }
+  if (event.type === "tool_call_delta") {
+    event.delta = event.delta.slice(-maxChars);
+    return event.delta.length;
+  }
+  return 0;
+}
+
+function projectBufferedStreamEvent(event: CanonicalModelEvent): CanonicalModelEvent | undefined {
+  switch (event.type) {
+    case "text_delta":
+      return { type: "text_delta", text: event.text };
+    case "thinking_delta":
+      return { type: "thinking_delta", text: event.text, signature: event.signature };
+    case "tool_call_delta":
+      return { type: "tool_call_delta", id: event.id, delta: event.delta };
+    default:
+      return undefined;
+  }
+}
+
+function bufferedEventChars(event: CanonicalModelEvent): number {
+  if (event.type === "text_delta" || event.type === "thinking_delta") return event.text.length;
+  if (event.type === "tool_call_delta") return event.delta.length;
+  return 0;
 }
 
 function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
