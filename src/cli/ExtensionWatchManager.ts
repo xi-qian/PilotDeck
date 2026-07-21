@@ -1,4 +1,4 @@
-import { existsSync, watch, type FSWatcher } from "node:fs";
+import { existsSync, statSync, watch, type FSWatcher } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 import { getPilotExtensionPaths } from "../pilot/index.js";
 
@@ -107,7 +107,7 @@ export class ExtensionWatchManager {
   private createWatchers(scope: ExtensionWatchScope, watchedPaths: string[]): FSWatcher[] {
     const watchers: FSWatcher[] = [];
     for (const watchedPath of watchedPaths) {
-      const watchTarget = resolveExistingWatchTarget(watchedPath);
+      const { target: watchTarget, recursive } = resolveWatchTarget(watchedPath);
       const schedule = (filename: string) => {
         if (shouldHandleWatchSignal(watchTarget, watchedPath, filename)) {
           this.schedule(scope, watchedPath);
@@ -115,14 +115,16 @@ export class ExtensionWatchManager {
       };
       const errorTarget = (error: unknown) =>
         this.options.onError?.(scope, error instanceof Error ? error : new Error(String(error)));
-      const recursiveWatcher = this.tryWatch(watchTarget, true, schedule, errorTarget);
-      if (recursiveWatcher) {
-        watchers.push(recursiveWatcher);
+      const watcher = this.tryWatch(watchTarget, recursive, schedule, errorTarget);
+      if (watcher) {
+        watchers.push(watcher);
         continue;
       }
-      const plainWatcher = this.tryWatch(watchTarget, false, schedule, errorTarget);
-      if (plainWatcher) {
-        watchers.push(plainWatcher);
+      if (recursive) {
+        const plainWatcher = this.tryWatch(watchTarget, false, schedule, errorTarget);
+        if (plainWatcher) {
+          watchers.push(plainWatcher);
+        }
       }
     }
     return watchers;
@@ -156,8 +158,22 @@ export class ExtensionWatchManager {
       record.timer = undefined;
       const changedPaths = [...record.pendingPaths].sort();
       record.pendingPaths.clear();
+      this.refreshWatchers(record);
       this.options.onChange({ scope: record.scope, changedPaths });
     }, this.options.debounceMs ?? 250);
+  }
+
+  private refreshWatchers(record: ScopeWatchRecord): void {
+    for (const watcher of record.watchers) {
+      try {
+        watcher.close();
+      } catch {
+        // Best-effort replacement after an extension path is created or removed.
+      }
+    }
+    record.watchers = this.started
+      ? this.createWatchers(record.scope, record.watchedPaths)
+      : [];
   }
 }
 
@@ -165,7 +181,7 @@ function scopeKey(scope: ExtensionWatchScope): string {
   return scope.kind === "global" ? "__global__" : scope.projectRoot;
 }
 
-function resolveExistingWatchTarget(path: string): string {
+export function resolveWatchTarget(path: string): { target: string; recursive: boolean } {
   let current = path;
   while (!existsSync(current)) {
     const parent = dirname(current);
@@ -174,7 +190,13 @@ function resolveExistingWatchTarget(path: string): string {
     }
     current = parent;
   }
-  return current;
+  // Recursing from a fallback ancestor can traverse an entire project or home
+  // directory when `.pilotdeck/` does not exist. Watch that ancestor shallowly
+  // until the intended extension path is created, then refresh onto the path.
+  return {
+    target: current,
+    recursive: current === path && statSync(current).isDirectory(),
+  };
 }
 
 function shouldHandleWatchSignal(watchTarget: string, watchedPath: string, filename: string): boolean {
@@ -182,7 +204,9 @@ function shouldHandleWatchSignal(watchTarget: string, watchedPath: string, filen
     return true;
   }
   const absoluteChanged = resolve(watchTarget, filename);
-  return absoluteChanged === watchedPath || absoluteChanged.startsWith(`${watchedPath}${sep}`);
+  return absoluteChanged === watchedPath
+    || absoluteChanged.startsWith(`${watchedPath}${sep}`)
+    || watchedPath.startsWith(`${absoluteChanged}${sep}`);
 }
 
 function toUtf8(value: string | Buffer | null | undefined): string {
