@@ -22,6 +22,8 @@ import {
 
 export const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024;
 export const FETCH_TIMEOUT_MS = 60_000;
+export const FETCH_MAX_ATTEMPTS = 3;
+export const FETCH_RETRY_DELAY_MS = 100;
 export const MAX_REDIRECTS = 10;
 export const MAX_MARKDOWN_LENGTH = 100_000;
 export const WEB_FETCH_USER_AGENT =
@@ -107,24 +109,32 @@ async function fetchWithRedirects(
   if (depth > MAX_REDIRECTS) {
     throw new Error(`Too many redirects (exceeded ${MAX_REDIRECTS})`);
   }
-  const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(new Error("fetch timeout")), FETCH_TIMEOUT_MS);
-  const onParentAbort = () => timeout.abort();
-  signal.addEventListener("abort", onParentAbort, { once: true });
-
-  let res: Awaited<ReturnType<FetchHook>>;
-  try {
-    res = await activeFetchHook(url, {
-      headers: {
-        Accept: "text/markdown, text/html, */*",
-        "User-Agent": WEB_FETCH_USER_AGENT,
-      },
-      signal: timeout.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-    signal.removeEventListener("abort", onParentAbort);
+  let res: Awaited<ReturnType<FetchHook>> | undefined;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= FETCH_MAX_ATTEMPTS; attempt += 1) {
+    const timeout = new AbortController();
+    const timer = setTimeout(() => timeout.abort(new Error("fetch timeout")), FETCH_TIMEOUT_MS);
+    const onParentAbort = () => timeout.abort(signal.reason);
+    signal.addEventListener("abort", onParentAbort, { once: true });
+    try {
+      res = await activeFetchHook(url, {
+        headers: {
+          Accept: "text/markdown, text/html, */*",
+          "User-Agent": WEB_FETCH_USER_AGENT,
+        },
+        signal: timeout.signal,
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+      if (signal.aborted || attempt === FETCH_MAX_ATTEMPTS) throw error;
+      await new Promise((resolve) => setTimeout(resolve, FETCH_RETRY_DELAY_MS * attempt));
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onParentAbort);
+    }
   }
+  if (!res) throw lastError;
 
   if ([301, 302, 307, 308].includes(res.status)) {
     const location = res.headers["location"];

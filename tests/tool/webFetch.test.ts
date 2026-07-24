@@ -92,7 +92,30 @@ test("web_fetch rejects a secondary response containing only thinking", async ()
   );
 });
 
-function createContext(model: PilotDeckToolModelClient): PilotDeckToolRuntimeContext {
+test("web_fetch retries transient transport failures within one tool call", async () => {
+  let attempts = 0;
+  __setWebFetchHookForTesting(async () => {
+    attempts += 1;
+    if (attempts < 3) throw new TypeError("fetch failed");
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: { "content-type": "text/plain" },
+      arrayBuffer: async () => new TextEncoder().encode("Recovered page text").buffer,
+    };
+  });
+  const tool = createWebFetchTool();
+
+  const result = await tool.execute(
+    { url: testUrl, prompt: "Return the page" },
+    createContext(undefined),
+  );
+
+  assert.equal(attempts, 3);
+  assert.deepEqual(result.content[0], { type: "text", text: "Recovered page text" });
+});
+
+function createContext(model?: PilotDeckToolModelClient): PilotDeckToolRuntimeContext {
   const cwd = process.cwd();
   return {
     sessionId: "session-1",
@@ -100,6 +123,6 @@ function createContext(model: PilotDeckToolModelClient): PilotDeckToolRuntimeCon
     cwd,
     permissionMode: "default",
     permissionContext: createDefaultPermissionContext({ cwd }),
-    model,
+    ...(model ? { model } : {}),
   };
 }

@@ -395,6 +395,7 @@ export class InProcessGateway implements Gateway {
           {
             turnId: runId,
             maxTurns: input.maxTurns,
+            toolCallLimits: input.toolCallLimits,
             permissionMode,
             basePermissionMode,
             allowPlanModeTools,

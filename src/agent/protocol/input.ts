@@ -8,6 +8,8 @@ export type AgentInput =
 export type AgentSubmitOptions = {
   turnId?: string;
   maxTurns?: number;
+  /** Per-tool execution caps for this turn. */
+  toolCallLimits?: Record<string, number>;
   metadata?: Record<string, unknown>;
   permissionMode?: PermissionMode;
   /** The user's actual permission preference before plan-mode override. */

@@ -83,6 +83,8 @@ export type GatewaySubmitTurnInput = {
   allowPlanModeTools?: boolean;
   runId?: string;
   maxTurns?: number;
+  /** Per-tool execution caps for this turn. Excess calls receive a controlled tool error. */
+  toolCallLimits?: Record<string, number>;
   /** Disable all MCP tools and MCP prompt instructions for this session. */
   mcpMode?: "auto" | "disabled";
   /** Evict the in-memory session and its resources after this turn settles. */

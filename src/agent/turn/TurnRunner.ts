@@ -16,6 +16,7 @@ export type TurnRunnerOptions = {
   messages: CanonicalMessage[];
   input: AgentInput;
   maxTurns?: number;
+  toolCallLimits?: Record<string, number>;
   permissionMode?: PermissionMode;
   /** The user's actual permission preference before plan-mode override. */
   basePermissionMode?: PermissionMode;
@@ -108,6 +109,7 @@ export class TurnRunner {
         turnId: options.turnId,
         messages,
         maxTurns: options.maxTurns,
+        toolCallLimits: options.toolCallLimits,
         permissionMode: options.permissionMode,
         basePermissionMode: options.basePermissionMode,
         allowPlanModeTools: options.allowPlanModeTools,

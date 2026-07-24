@@ -40,6 +40,7 @@ import type { ContextRecoveryDecision } from "../../context/index.js";
 import type { PermissionMode, PermissionRule, PermissionRuleSet } from "../../permission/index.js";
 import { collectToolCalls } from "./collectToolCalls.js";
 import { createMissingToolResult, ensureToolResultPairing } from "./ensureToolResultPairing.js";
+import { applyToolCallLimits } from "./applyToolCallLimits.js";
 import { LargeFileRepair, type LargeFileRepairDecision } from "./LargeFileRepair.js";
 import { projectToolResults } from "./projectToolResults.js";
 
@@ -60,6 +61,7 @@ export type AgentLoopInput = {
   turnId: string;
   messages: CanonicalMessage[];
   maxTurns?: number;
+  toolCallLimits?: Record<string, number>;
   permissionMode?: PermissionMode;
   /** The user's actual permission preference before plan-mode override. */
   basePermissionMode?: PermissionMode;
@@ -156,6 +158,7 @@ export class AgentLoop {
     const MAX_JSON_SELF_CORRECT_RETRIES = 3;
     let jsonSelfCorrectCount = 0;
     const largeFileRepair = new LargeFileRepair();
+    const toolCallCounts = new Map<string, number>();
 
     /**
      * Circuit breaker: consecutive turns where ALL tool calls are
@@ -812,21 +815,30 @@ export class AgentLoop {
         // outputTruncated=true so formatValidationError can provide hints.
       }
 
+      const { executable: executableToolCalls, limitedResults } = applyToolCallLimits(
+        toolCalls,
+        input.toolCallLimits,
+        toolCallCounts,
+        this.now,
+      );
+
       let results: PilotDeckToolResult[];
       try {
         const toolContext = this.createToolContext(input, messages);
         if (assembled.finishReason === "length" || assembled.hasRepairedToolCalls) {
           toolContext.outputTruncated = true;
         }
-        results = yield* this.executeToolsWithEventPump(
-          toolCalls,
-          toolContext,
-          input,
-        );
+        const executedResults = executableToolCalls.length > 0
+          ? yield* this.executeToolsWithEventPump(executableToolCalls, toolContext, input)
+          : [];
+        results = [...executedResults, ...limitedResults];
       } catch (error) {
-        results = toolCalls.map((call) =>
-          createMissingToolResult(call, this.now, error instanceof Error ? error.message : String(error)),
-        );
+        results = [
+          ...executableToolCalls.map((call) =>
+            createMissingToolResult(call, this.now, error instanceof Error ? error.message : String(error))
+          ),
+          ...limitedResults,
+        ];
       }
       if (input.abortSignal?.aborted) {
         const result = this.createTurnResult(input, {
