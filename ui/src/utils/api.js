@@ -1,11 +1,16 @@
 import { IS_PLATFORM } from "../constants/config";
 
+export const createAppUrl = (basePath, path) => {
+  const prefix = String(basePath || '').replace(/\/$/, '');
+  if (/^https?:\/\//i.test(path)) return path;
+  const suffix = String(path || '').startsWith('/') ? path : `/${path}`;
+  return `${prefix}${suffix}`;
+};
+
 const apiBasePath = String(import.meta.env.VITE_API_BASE_PATH || '').replace(/\/$/, '');
 
 export const appApiUrl = (path) => {
-  if (/^https?:\/\//i.test(path)) return path;
-  const suffix = String(path || '').startsWith('/') ? path : `/${path}`;
-  return `${apiBasePath}${suffix}`;
+  return createAppUrl(apiBasePath, path);
 };
 
 export const appWebSocketUrl = (path) => {
