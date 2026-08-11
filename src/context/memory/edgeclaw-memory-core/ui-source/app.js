@@ -1,4 +1,5 @@
 import { renderTraceI18nText } from "./trace-i18n.js";
+import { createMemoryApiUrl } from "./ui-paths.js";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -911,7 +912,7 @@ function formatTraceDisplayStatus(record) {
 function headers(extra = {}) { return state.token ? { Authorization: `Bearer ${state.token}`, ...extra } : { ...extra }; }
 
 function withProjectPath(url) {
-  const next = new URL(url, window.location.origin);
+  const next = new URL(createMemoryApiUrl(window.location.pathname, url), window.location.origin);
   if (state.projectPath) next.searchParams.set("projectPath", state.projectPath);
   return `${next.pathname}${next.search}`;
 }
