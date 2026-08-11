@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createAppUrl } from './api';
+import { createAppUrl, createMemoryDashboardUrl } from './api';
 
 describe('createAppUrl', () => {
   it('keeps app API calls under the gateway app prefix', () => {
@@ -11,6 +11,18 @@ describe('createAppUrl', () => {
   it('does not alter absolute URLs', () => {
     expect(createAppUrl('/v1/apps/coding', 'https://example.test/api')).toBe(
       'https://example.test/api',
+    );
+  });
+
+  it('keeps the memory dashboard under the coding gateway prefix', () => {
+    expect(
+      createMemoryDashboardUrl('/v1/apps/coding', {
+        projectPath: '/workspace/demo',
+        locale: 'zh',
+        theme: 'dark',
+      }),
+    ).toBe(
+      '/v1/apps/coding/memory-dashboard/index.html?projectPath=%2Fworkspace%2Fdemo&locale=zh&theme=dark',
     );
   });
 });

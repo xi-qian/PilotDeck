@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { Project } from '../../../../types/app';
 import { AUTH_TOKEN_STORAGE_KEY } from '../../../auth/constants';
 import { useTheme } from '../../../../contexts/ThemeContext';
+import { appMemoryDashboardUrl } from '../../../../utils/api';
 
 type MemoryPanelProps = {
   selectedProject: Project | null;
@@ -40,12 +41,12 @@ function buildMemoryDashboardUrl(project: Project, locale: 'zh' | 'en', theme: '
     return null;
   }
 
-  const params = new URLSearchParams({ projectPath, locale, theme });
+  const params: Record<string, string> = { projectPath, locale, theme };
   if (token) {
-    params.set('token', token);
+    params.token = token;
   }
 
-  return `/memory-dashboard/index.html?${params.toString()}`;
+  return appMemoryDashboardUrl(params);
 }
 
 export default function MemoryPanel({ selectedProject }: MemoryPanelProps) {

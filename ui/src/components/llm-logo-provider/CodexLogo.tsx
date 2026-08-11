@@ -10,7 +10,7 @@ const CodexLogo = ({ className = 'w-5 h-5' }: CodexLogoProps) => {
 
   return (
     <img
-      src={isDarkMode ? "/icons/codex-white.svg" : "/icons/codex.svg"}
+      src={`${import.meta.env.BASE_URL}icons/${isDarkMode ? 'codex-white.svg' : 'codex.svg'}`}
       alt="Codex"
       className={className}
     />

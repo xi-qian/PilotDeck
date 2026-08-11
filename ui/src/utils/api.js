@@ -7,10 +7,19 @@ export const createAppUrl = (basePath, path) => {
   return `${prefix}${suffix}`;
 };
 
+export const createMemoryDashboardUrl = (basePath, values) => {
+  const params = new URLSearchParams(values);
+  return createAppUrl(basePath, `/memory-dashboard/index.html?${params.toString()}`);
+};
+
 const apiBasePath = String(import.meta.env.VITE_API_BASE_PATH || '').replace(/\/$/, '');
 
 export const appApiUrl = (path) => {
   return createAppUrl(apiBasePath, path);
+};
+
+export const appMemoryDashboardUrl = (values) => {
+  return createMemoryDashboardUrl(apiBasePath, values);
 };
 
 export const appWebSocketUrl = (path) => {
